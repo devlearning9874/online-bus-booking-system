@@ -1,0 +1,14 @@
+server:
+  port: 5500
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:1111/eureka/ # this is the address of Eureka server
+      #defaultZone: http://35.244.42.151:1111/eureka/
+  instance:
+    appname: passangerservice
+
+
+spring:
+  application:
+    name: passangerservice

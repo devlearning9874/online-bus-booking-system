@@ -1,0 +1,45 @@
+server:
+  port: 3500
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:1111/eureka/
+  instance:
+    appname: apigateway
+
+spring:
+  application:
+    name: apigateway
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "http://localhost:5173"
+            allowedMethods: [GET, POST, PUT, DELETE, OPTIONS]
+            allowedHeaders: "*"
+            allowCredentials: true
+            
+      routes:
+        # 1. USER & AUTH SERVICE (Permitted publicly for Login/Signup)
+        - id: userservice-module
+          uri: lb://USERSERVICE
+          predicates:
+            - Path=/api/auth/**, /api/v1/user/**
+
+        # 2. BOOKING SERVICE (Secured via Filter)
+        - id: booking-module
+          uri: lb://BOOKING-SERVICE
+          predicates:
+            - Path=/bookings/**
+          filters:
+            - JwtAuthenticationFilter # This triggers our custom token validator check
+
+        # 3. ROUTE SERVICE (Secured via Filter)
+        - id: route-module
+          uri: lb://ROUTE-SERVICE
+          predicates:
+            - Path=/routes/**
+          filters:
+            - JwtAuthenticationFilter

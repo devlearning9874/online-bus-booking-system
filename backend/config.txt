@@ -1,0 +1,40 @@
+cd /d/Edureka/project/onlinebusreservationproject/project/backend
+
+
+
+
+mvn clean spring-boot:run -DsktipTests -q
+
+
+docker compose down && docker compose up -d
+
+docker exec -it obr_db mysql -u root -p onlinebusbooking
+
+
+# for Prometheus and Grafana configuration
+
+1. configure properties file
+
+
+management.endpoints.web.exposure.include=health,info,prometheus
+management.endpoint.metrics.enabled=true
+management.endpoint.prometheus.enabled=true
+
+
+2. add dependency (actuator and Prometheus)
+
+<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-devtools</artifactId>
+			<optional>true</optional>
+
+</dependency>

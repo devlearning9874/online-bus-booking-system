@@ -1,0 +1,12 @@
+# Ignore local database volume data
+/data/
+
+# Ignore build artifacts
+**/target/
+
+# Ignore local environment overrides
+.env
+.env.local
+
+# Ignore logs and temporary files
+*.log

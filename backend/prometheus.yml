@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 5s # How often to poll for metrics
+
+scrape_configs:
+  - job_name: "springboot-microservices"
+    metrics_path: "/actuator/prometheus"
+    static_configs:
+      # If your Spring Boot apps run locally on your host machine:
+      - targets:
+          [
+            "host.docker.internal:3500",
+            "host.docker.internal:7200",
+            "host.docker.internal:6200",
+            "host.docker.internal:6000",
+            "host.docker.internal:9500",
+            "host.docker.internal:5500",
+            "host.docker.internal:8500",
+            "host.docker.internal:9800",
+            "host.docker.internal:9900",
+          ]
+
+      # If your Spring Boot apps run inside Docker containers instead, use:
+      # - targets: ['auth-service:8081', 'order-service:8082']

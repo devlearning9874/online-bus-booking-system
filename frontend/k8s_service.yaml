@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bus-reservation-frontend
+  namespace: default
+  labels:
+    app: bus-reservation-frontend
+spec:
+  type: LoadBalancer
+  selector:
+    app: bus-reservation-frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600

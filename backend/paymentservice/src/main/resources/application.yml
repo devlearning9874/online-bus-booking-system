@@ -1,0 +1,19 @@
+server:
+  port: 8500
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:1111/eureka/ # this is the address of Eureka server
+      #defaultZone: http://35.244.42.151:1111/eureka/
+  instance:
+    appname: paymentservice
+
+
+spring:
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  application:
+    name: paymentservice
+
+jwt:
+  secret: ${JWT_SECRET:aSecureAndVeryLongSecretKeyWithAtLeast32Characters}

@@ -1,0 +1,15 @@
+# Ignore everything at the root by default
+/*
+
+~$*.pptx
+
+# Allow the application folders we want to keep
+!/frontend/
+!/backend/
+
+# Keep this ignore file tracked
+!.gitignore
+
+# ignore typical editor / OS files in root
+.DS_Store
+Thumbs.db

@@ -1,0 +1,19 @@
+server:
+  port: 9500
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:1111/eureka/ # this is the address of Eureka server
+      #defaultZone: http://35.244.42.151:1111/eureka/
+  instance:
+    appname: inventoryservice
+
+
+spring:
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  application:
+    name: inventoryservice
+
+jwt:
+  secret: ${JWT_SECRET:aSecureAndVeryLongSecretKeyWithAtLeast32Characters}
