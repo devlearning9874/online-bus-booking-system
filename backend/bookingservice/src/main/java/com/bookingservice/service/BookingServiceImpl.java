@@ -1,7 +1,6 @@
 package com.bookingservice.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -11,95 +10,86 @@ import com.bookingservice.kafka.KafkaProducerService;
 import com.bookingservice.repository.BookingRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inventoryservice.entity.Inventory;
-import com.passangerservice.entity.Passanger;
 import com.routeservice.entity.Route;
 
 @Service
 public class BookingServiceImpl implements BookingService {
 
-	@Autowired
-	BookingRepository bookingRepo;
+    @Autowired
+    private BookingRepository bookingRepo;
 
-	@Autowired
-	KafkaProducerService kafkaProducerService;
+    @Autowired
+    private KafkaProducerService kafkaProducerService;
 
-	@Autowired
-	ObjectMapper objectMapper;
+    @Autowired
+    private ObjectMapper objectMapper;
 
-	@Autowired
-	RestTemplate restTemplate;
+    @Autowired
+    private RestTemplate restTemplate;
 
-	@Override
-	public String createBooking(Booking booking) {
-		Inventory inventory = restTemplate.getForObject(
-				"http://localhost:9500/api/v1/inventory/getInventory/" + booking.getBusId(), Inventory.class);
-		Route route = restTemplate.getForObject("http://localhost:9800/api/v1/route/getRoute/" + booking.getBusId(),
-				Route.class);
-//		System.out.println(inventory.getInventoryId());
-//		System.out.println(route.getRouteId());
-		
-		// inventory.getAvailableSeats() >= booking.getNoOfSeats()
-		
-		// Checking seats availability at Booking Service so Saga pattern is not needed
+    @Override
+    public String createBooking(Booking booking) {
+        // Fetch background route data synchronously to populate transaction details
+        Inventory inventory = restTemplate.getForObject(
+                "http://localhost:9500/api/v1/inventory/getInventory/" + booking.getBusId(), Inventory.class);
+        Route route = restTemplate.getForObject(
+                "http://localhost:9800/api/v1/route/getRoute/" + booking.getBusId(), Route.class);
 
-		if (inventory.getAvailableSeats() >= booking.getNoOfSeats()) {
-			booking.setBookingId(System.currentTimeMillis() + "");
-			booking.setBusId(booking.getBusId());
-			booking.setDateOfBooking(booking.getDateOfBooking());
-			booking.setSource(route.getSource());
-			booking.setDestination(route.getDestination());
-			booking.setNoOfSeats(booking.getNoOfSeats());
-			booking.setStatus("pending");
-			bookingRepo.save(booking);
-		try {
-			kafkaProducerService.send("booking_created_event", objectMapper.writeValueAsString(booking));
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to publish booking_created_event", ex);
-		}
+        if (inventory != null && route != null && inventory.getAvailableSeats() >= booking.getNoOfSeats()) {
+            
+            // Generate clean alphanumeric keys matching your VARCHAR database column constraints
+            booking.setBookingId("BKG-" + System.currentTimeMillis());
+            booking.setSource(route.getSource());
+            booking.setDestination(route.getDestination());
+            booking.setStatus("pending"); // State transition locks down resource pending Saga stream verification
+            
+            // Save initial local transaction snapshot to MySQL
+            bookingRepo.save(booking);
 
-		} else {
-			return "Seats are not available for Bus Id:" + booking.getBusId() + "and Route Id:" + route.getRouteId();
-		}
+            // Emit the transaction event across your Apache Kafka broker cluster
+            try {
+                kafkaProducerService.send("booking_created_event", objectMapper.writeValueAsString(booking));
+            } catch (Exception ex) {
+                throw new RuntimeException("Failed to publish booking_created_event", ex);
+            }
 
-		return "Booking created with ID: " + booking.getBookingId();
-	}
+        } else {
+            return "Seats are not available for Bus Id: " + booking.getBusId();
+        }
 
-	@KafkaListener(topics = "inventory_updated_event", groupId = "${spring.kafka.consumer.group-id:bookingservice-consumer}")
-	public void confirmOrder(String bookingPayload) {
-		try {
-			Thread.sleep(200);
-		} catch (Exception ex) {
-			ex.printStackTrace();
-		}
-		Booking booking;
-		try {
-			booking = objectMapper.readValue(bookingPayload, Booking.class);
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to parse booking payload", ex);
-		}
-		// update booking status to confirmed
-		booking.setStatus("confirmed");
-		bookingRepo.save(booking);
-		restTemplate.postForObject("http://localhost:5500/api/v1/passanger/" + booking.getBookingId(), null, String.class);
-		// invoke notification service to send confirmed booking
-	}
+        return "Booking created with ID: " + booking.getBookingId();
+    }
 
-	@KafkaListener(topics = "payment_failed_event", groupId = "${spring.kafka.consumer.group-id:bookingservice-consumer}")
-	public void receivePaymentFailure(String bookingPayload) {
-		try {
-			Thread.sleep(200);
-		} catch (Exception ex) {
-			ex.printStackTrace();
-		}
-		try {
-			Booking booking = objectMapper.readValue(bookingPayload, Booking.class);
-			// preserve the existing booking status if already set
-			booking.setStatus(booking.getStatus());
-			bookingRepo.save(booking);
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to parse booking payload", ex);
-		}
-		// invoke notification service to send cancelled order
-	}
+    @KafkaListener(topics = "inventory_updated_event", groupId = "bookingservice-consumer")
+    public void confirmOrder(String bookingPayload) {
+        try {
+            Booking kafkaBooking = objectMapper.readValue(bookingPayload, Booking.class);
+            
+            // Pull the persistent entity from your DB and transition status to confirmed
+            bookingRepo.findById(kafkaBooking.getBookingId()).ifPresent(booking -> {
+                booking.setStatus("confirmed");
+                bookingRepo.save(booking);
+                
+                // Propagate upstream notification to your downstream passenger assignment handler
+                restTemplate.postForObject("http://localhost:5500/api/v1/passanger/" + booking.getBookingId(), null, String.class);
+            });
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to parse confirm booking payload", ex);
+        }
+    }
 
+    @KafkaListener(topics = "payment_failed_event", groupId = "bookingservice-consumer")
+    public void receivePaymentFailure(String bookingPayload) {
+        try {
+            Booking kafkaBooking = objectMapper.readValue(bookingPayload, Booking.class);
+            
+            // Compensating transaction fallback: write rollback state straight to DB
+            bookingRepo.findById(kafkaBooking.getBookingId()).ifPresent(booking -> {
+                booking.setStatus("cancelled"); 
+                bookingRepo.save(booking);
+            });
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to parse rollback booking payload", ex);
+        }
+    }
 }
